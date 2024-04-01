@@ -12,3 +12,9 @@ client = OpenAI(
     api_key=os.environ.get("add appi key here"),
 )
 ```
+
+## Enviroment 
+a python 3.11 enviroment was configured 
+```
+.venv/Scripts/python.exe -m pip install pyrealsense2 opencv-python dlib
+```

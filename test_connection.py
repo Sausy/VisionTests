@@ -1,175 +1,74 @@
-from openni import openni2
-import cv2
+import pyrealsense2 as rs
 import numpy as np
-import tkinter as tk
-from tkinter import ttk
-
-class ColorAdjustmentApp:
-    def __init__(self, master):
-        self.master = master
-        self.master.title("Color Adjustment App")
-
-        self.color_correction_matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-
-        self.create_widgets()
-
-    def create_widgets(self):
-        # Color Adjustment Matrix Sliders
-        self.sliders = []
-        for i in range(3):
-            for j in range(3):
-                slider_label = ttk.Label(self.master, text=f"M[{i}][{j}]")
-                slider_label.grid(row=i, column=j, padx=5, pady=5)
-
-                slider_var = tk.DoubleVar()
-                slider_var.set(self.color_correction_matrix[i, j])
-                slider = ttk.Scale(self.master, from_=0.0, to=2.0, length=200, variable=slider_var, orient=tk.HORIZONTAL)
-                slider.grid(row=i, column=j + 1, padx=5, pady=5)
-
-                slider_var.trace_add("write", self.update_matrix)
-                self.sliders.append(slider_var)
-
-        # OpenNI Initialization
-        openni2.initialize()
-        self.dev = openni2.Device.open_any()
-        self.color_stream = self.dev.create_color_stream()
-        self.depth_stream = self.dev.create_depth_stream()
-        self.color_stream.start()
-        self.depth_stream.start()
-
-        # Display Frames Button
-        self.display_button = ttk.Button(self.master, text="Display Frames", command=self.display_frames)
-        self.display_button.grid(row=3, column=0, columnspan=4, pady=10)
-
-    def update_matrix(self, *args):
-        # Update color correction matrix based on slider values
-        for i in range(3):
-            for j in range(3):
-                self.color_correction_matrix[i, j] = self.sliders[i * 3 + j].get()
-
-    def display_frames(self):
-        try:
-            while True:
-                color_frame = self.color_stream.read_frame()
-                depth_frame = self.depth_stream.read_frame()
-
-                color_data = np.frombuffer(color_frame.get_buffer_as_uint8(), dtype=np.uint8)
-                color_image = color_data.reshape((color_frame.height, color_frame.width, 3))
-
-                # Apply color correction matrix
-                color_image_corrected = cv2.transform(color_image, self.color_correction_matrix)
-
-                depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16)
-                depth_image = depth_data.reshape((depth_frame.height, depth_frame.width))
-
-                normalized_depth = cv2.normalize(depth_image, None, 0, 255, cv2.NORM_MINMAX)
-                depth_colormap = cv2.applyColorMap(normalized_depth.astype(np.uint8), cv2.COLORMAP_JET)
-
-                cv2.imshow('Color Frame', color_image_corrected)
-                cv2.imshow('Depth Frame', depth_colormap)
-
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-
-        finally:
-            self.color_stream.stop()
-            self.depth_stream.stop()
-            openni2.unload()
-            cv2.destroyAllWindows()
-
-
-def main():
-    root = tk.Tk()
-    app = ColorAdjustmentApp(root)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
-from openni import openni2
 import cv2
-import numpy as np
-import tkinter as tk
-from tkinter import ttk
+import time
 
-class ColorAdjustmentApp:
-    def __init__(self, master):
-        self.master = master
-        self.master.title("Color Adjustment App")
+# Configure depth, color, and infrared streams
+pipeline = rs.pipeline()
+config = rs.config()
 
-        self.color_correction_matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+# Enable depth stream
+#config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
+# Enable color stream
+#config.enable_stream(rs.stream.color, 1280, 800, rs.format.bgr8, 30)
+config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+# Enable color stream
+config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+# Enable infrared stream of the  camera 
+#config.enable_stream(rs.stream.infrared, 1, 640, 480, rs.format.y8, 30)
 
-        self.create_widgets()
+# Enable IMU
+config.enable_stream(rs.stream.accel)
+config.enable_stream(rs.stream.gyro)
 
-    def create_widgets(self):
-        # Color Adjustment Matrix Sliders
-        self.sliders = []
-        for i in range(3):
-            for j in range(3):
-                slider_label = ttk.Label(self.master, text=f"M[{i}][{j}]")
-                slider_label.grid(row=i, column=j, padx=5, pady=5)
+# Start streaming
+profile = pipeline.start(config)
 
-                slider_var = tk.DoubleVar()
-                slider_var.set(self.color_correction_matrix[i, j])
-                slider = ttk.Scale(self.master, from_=0.0, to=2.0, length=200, variable=slider_var, orient=tk.HORIZONTAL)
-                slider.grid(row=i, column=j + 1, padx=5, pady=5)
+try:
+    last_print = time.time()
+    while True:
+        # Wait for a coherent set of frames: depth, color, gyro, and accel
+        frames = pipeline.wait_for_frames()
+        depth_frame = frames.get_depth_frame()
+        color_frame = frames.get_color_frame()
+        accel_frame = frames.first_or_default(rs.stream.accel)
+        gyro_frame = frames.first_or_default(rs.stream.gyro)
+        #infrared_frame = frames.first(rs.stream.infrared)
 
-                slider_var.trace_add("write", self.update_matrix)
-                self.sliders.append(slider_var)
+        if not depth_frame or not color_frame:
+            print("Could not acquire depth or color frames.")
+            continue
 
-        # OpenNI Initialization
-        openni2.initialize()
-        self.dev = openni2.Device.open_any()
-        self.color_stream = self.dev.create_color_stream()
-        self.depth_stream = self.dev.create_depth_stream()
-        self.color_stream.start()
-        self.depth_stream.start()
+        # Convert images to numpy arrays
+        depth_image = np.asanyarray(depth_frame.get_data())
+        color_image = np.asanyarray(color_frame.get_data())
+        #infrared_image = np.asanyarray(infrared_frame.get_data())
 
-        # Display Frames Button
-        self.display_button = ttk.Button(self.master, text="Display Frames", command=self.display_frames)
-        self.display_button.grid(row=3, column=0, columnspan=4, pady=10)
+        # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
+        depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
 
-    def update_matrix(self, *args):
-        # Update color correction matrix based on slider values
-        for i in range(3):
-            for j in range(3):
-                self.color_correction_matrix[i, j] = self.sliders[i * 3 + j].get()
+        # Resize color image to match the depth image size
+        color_image_resized = cv2.resize(color_image, (depth_colormap.shape[1], depth_colormap.shape[0]))
 
-    def display_frames(self):
-        try:
-            while True:
-                color_frame = self.color_stream.read_frame()
-                depth_frame = self.depth_stream.read_frame()
+        # Stack both images horizontally
+        images = np.hstack((color_image_resized, depth_colormap))
 
-                color_data = np.frombuffer(color_frame.get_buffer_as_uint8(), dtype=np.uint8)
-                color_image = color_data.reshape((color_frame.height, color_frame.width, 3))
+        # Display images
+        #cv2.imshow('Infrared', infrared_image)
+        cv2.imshow('RealSense (Color + Depth)', images)
+        
 
-                # Apply color correction matrix
-                color_image_corrected = cv2.transform(color_image, self.color_correction_matrix)
+        # Print IMU data at a reduced rate for readability
+        if accel_frame and gyro_frame and (time.time() - last_print) > 1:
+            accel = accel_frame.as_motion_frame().get_motion_data()
+            gyro = gyro_frame.as_motion_frame().get_motion_data()
+            print(f"Accel: {accel.x:.3f}, {accel.y:.3f}, {accel.z:.3f} | Gyro: {gyro.x:.3f}, {gyro.y:.3f}, {gyro.z:.3f}")
+            last_print = time.time()
 
-                depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16)
-                depth_image = depth_data.reshape((depth_frame.height, depth_frame.width))
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-                normalized_depth = cv2.normalize(depth_image, None, 0, 255, cv2.NORM_MINMAX)
-                depth_colormap = cv2.applyColorMap(normalized_depth.astype(np.uint8), cv2.COLORMAP_JET)
-
-                cv2.imshow('Color Frame', color_image_corrected)
-                cv2.imshow('Depth Frame', depth_colormap)
-
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
-
-        finally:
-            self.color_stream.stop()
-            self.depth_stream.stop()
-            openni2.unload()
-            cv2.destroyAllWindows()
-
-
-def main():
-    root = tk.Tk()
-    app = ColorAdjustmentApp(root)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
- 
+finally:
+    # Stop streaming
+    pipeline.stop()
+    cv2.destroyAllWindows()

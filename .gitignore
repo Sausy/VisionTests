@@ -1,1 +1,5 @@
+# Ignore the api_key.py file
 api_key.py
+
+# Ignore pre_trained_data folder
+pre_trained_data/*
