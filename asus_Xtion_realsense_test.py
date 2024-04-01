@@ -1,7 +1,8 @@
 import cv2
 #import openai
 
-from openai import OpenAI
+#from openai import OpenAI
+from api_key import *
 
 
 # Initialize the Asus Xtion Live Depth Camera
